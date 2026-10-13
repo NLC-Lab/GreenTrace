@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b6b7c"/>
+    </marker>
+    <style>
+      .box { fill:#f7f9fc; stroke:#c3ccd8; stroke-width:1.5; rx:8; }
+      .boxAccent { fill:#eef4ff; stroke:#7aa2e0; stroke-width:1.8; rx:8; }
+      .boxChain { fill:#f3fbf6; stroke:#7fbf9a; stroke-width:1.8; rx:8; }
+      .boxGov { fill:#fff8ec; stroke:#e0b070; stroke-width:1.8; rx:8; }
+      .title { font-size:15px; font-weight:600; fill:#22303f; }
+      .label { font-size:12.5px; fill:#44566b; }
+      .small { font-size:11.5px; fill:#6b7a8c; }
+      .edge { stroke:#5b6b7c; stroke-width:1.4; fill:none; marker-end:url(#arrow); }
+      .edgeDash { stroke:#b08b4f; stroke-width:1.4; fill:none; stroke-dasharray:5 4; marker-end:url(#arrow); }
+    </style>
+  </defs>
+
+  <text x="24" y="34" class="title" font-size="17">GreenTrace 系统架构（联盟链仿真平台）</text>
+  <text x="24" y="54" class="small">实线＝业务调用路径；虚线＝治理与审计路径</text>
+
+  <!-- clients -->
+  <rect class="box" x="24" y="80" width="190" height="120"/>
+  <text x="40" y="104" class="title">参与方客户端</text>
+  <text x="40" y="126" class="label">企业 / 供应商 / 制造商</text>
+  <text x="40" y="146" class="label">买方 / 品牌方</text>
+  <text x="40" y="166" class="label">审计机构 / 监管机构 / 发行方</text>
+  <text x="40" y="188" class="small">各自持有 Ed25519 私钥，本地签名</text>
+
+  <!-- api -->
+  <rect class="boxAccent" x="270" y="80" width="230" height="120"/>
+  <text x="286" y="104" class="title">FastAPI 服务层</text>
+  <text x="286" y="126" class="label">API Key 鉴权（除 /health）</text>
+  <text x="286" y="146" class="label">结构化日志 / 分页查询 / Swagger</text>
+  <text x="286" y="166" class="label">/transactions、/governance/transactions</text>
+  <text x="286" y="188" class="small">写入只接受已签名交易</text>
+
+  <!-- node -->
+  <rect class="boxChain" x="556" y="80" width="380" height="300"/>
+  <text x="572" y="104" class="title">Node（单进程节点服务）</text>
+
+  <rect class="box" x="576" y="118" width="164" height="58"/>
+  <text x="590" y="140" class="label">交易校验</text>
+  <text x="590" y="160" class="small">签名 · chain_id · nonce</text>
+
+  <rect class="box" x="756" y="118" width="164" height="58"/>
+  <text x="770" y="140" class="label">业务合约</text>
+  <text x="770" y="160" class="small">碳数据 · 凭证 · 订单 · escrow</text>
+
+  <rect class="box" x="576" y="190" width="164" height="58"/>
+  <text x="590" y="212" class="label">PBFT 风格 quorum</text>
+  <text x="590" y="232" class="small">验证人票据（Ed25519 签名）</text>
+
+  <rect class="box" x="756" y="190" width="164" height="58"/>
+  <text x="770" y="212" class="label">区块与 Merkle</text>
+  <text x="770" y="232" class="small">域分隔 · 可验证证明</text>
+
+  <rect class="box" x="576" y="262" width="344" height="46"/>
+  <text x="590" y="282" class="label">全量校验 verify_full()：链连接 · 交易签名 · 历史 nonce · 票据</text>
+  <text x="590" y="300" class="small">状态一致性 verify_state()：live 状态 vs 链重放结果</text>
+
+  <rect class="box" x="576" y="320" width="344" height="46"/>
+  <text x="590" y="340" class="label">trace 事件（received → validated → committed / rejected）</text>
+  <text x="590" y="358" class="small">审计事件 · 订单与批次时间线 · 资金流</text>
+
+  <!-- storage -->
+  <rect class="box" x="556" y="420" width="180" height="96"/>
+  <text x="572" y="444" class="title">SQLite 区块表</text>
+  <text x="572" y="466" class="label">追加写入（高度主键）</text>
+  <text x="572" y="486" class="label">WAL + busy_timeout</text>
+  <text x="572" y="506" class="small">blocks(height, payload)</text>
+
+  <rect class="box" x="756" y="420" width="180" height="96"/>
+  <text x="772" y="444" class="title">状态快照</text>
+  <text x="772" y="466" class="label">账户 / 凭证 / 订单 / 治理</text>
+  <text x="772" y="486" class="label">唯一临时文件 + fsync</text>
+  <text x="772" y="506" class="small">可由链重建（缓存）</text>
+
+  <!-- governance -->
+  <rect class="boxGov" x="270" y="256" width="230" height="120"/>
+  <text x="286" y="280" class="title">治理通道</text>
+  <text x="286" y="302" class="label">POST /governance/transactions</text>
+  <text x="286" y="322" class="label">governance_* 签名交易</text>
+  <text x="286" y="342" class="label">组织 / 成员 / 邀请决定 / 停用</text>
+  <text x="286" y="364" class="small">无签名写接口一律 403</text>
+
+  <!-- integrity -->
+  <rect class="boxGov" x="270" y="420" width="230" height="96"/>
+  <text x="286" y="444" class="title">审计与恢复</text>
+  <text x="286" y="466" class="label">GET /integrity</text>
+  <text x="286" y="486" class="label">POST /integrity/rebuild</text>
+  <text x="286" y="506" class="small">从区块重放，重建业务与治理状态</text>
+
+  <!-- edges -->
+  <line class="edge" x1="214" y1="120" x2="266" y2="120"/>
+  <line class="edge" x1="500" y1="120" x2="552" y2="140"/>
+  <line class="edgeDash" x1="214" y1="170" x2="266" y2="300"/>
+  <line class="edgeDash" x1="500" y1="300" x2="552" y2="150"/>
+  <line class="edge" x1="646" y1="380" x2="646" y2="416"/>
+  <line class="edge" x1="838" y1="380" x2="838" y2="416"/>
+  <line class="edge" x1="500" y1="462" x2="552" y2="462"/>
+  <line class="edge" x1="646" y1="420" x2="360" y2="380" stroke-dasharray="5 4"/>
+
+  <text x="700" y="548" class="small">部署形态：单进程 API（不要 --workers）；横向扩展需替换为「共识层 + 无状态 API + 数据库集群」</text>
+</svg>
