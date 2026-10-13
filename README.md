@@ -1,5 +1,10 @@
 # GreenTrace：绿色产业链可信协同平台
 
+[![CI](https://github.com/NLC-Lab/GreenTrace/actions/workflows/ci.yml/badge.svg)](https://github.com/NLC-Lab/GreenTrace/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Tests](https://img.shields.io/badge/tests-26%20passed-brightgreen)
+
 GreenTrace 是一个面向绿色供应链、碳排放核验和产业链协同的**可运行联盟链仿真平台**。它把组织身份、供应链批次、碳排数据、第三方审计、碳凭证、产业链订单、演示型 CarbonCoin 结算、GreenPoint 激励和监管审计放在同一条可验证的业务链路上。
 
 它不是只演示“把字符串做一次 SHA-256 哈希”，也不是单一的碳凭证交易页面，而是一个可以运行、测试、演示和继续生产化演进的多模块 Python 项目。
