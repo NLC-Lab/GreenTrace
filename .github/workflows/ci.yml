@@ -1,0 +1,54 @@
+name: GreenTrace CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -c constraints.txt -e ".[test,quality]"
+      - run: coverage run -m pytest -q
+      - run: coverage report --fail-under=80
+      - run: ruff check greentrace tests
+      - run: mypy greentrace
+      - run: python -m compileall -q greentrace
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -t greentrace:ci .
+      - name: Start container and wait for /health
+        run: |
+          docker run -d --name gt -p 8000:8000 -e GREENTRACE_DATA_DIR=/app/data greentrace:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health; then
+              echo
+              echo "container healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "container did not become healthy in 30s"
+          docker logs gt
+          exit 1
+      - name: Container logs
+        if: always()
+        run: docker logs gt || true
