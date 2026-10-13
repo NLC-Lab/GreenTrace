@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "greentrace"
-version = "0.1.0"
+version = "0.2.0"
 description = "GreenTrace 联盟链仿真平台：面向绿色供应链的 PBFT 风格区块链"
 requires-python = ">=3.11"
 dependencies = [

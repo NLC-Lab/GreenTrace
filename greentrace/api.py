@@ -10,18 +10,52 @@ from .merkle import verify_proof
 from .node import Node
 
 
-app = FastAPI(title="GreenTrace 联盟链仿真平台", version="0.2.0")
-logging.basicConfig(level=getattr(logging, os.getenv("GREENTRACE_LOG_LEVEL", "INFO").upper(), logging.INFO))
+class _JsonFormatter(logging.Formatter):
+    """轻量结构化日志：每条记录输出一行 JSON，便于日志采集与检索。"""
+
+    def format(self, record: logging.LogRecord) -> str:
+        import json as _json
+        entry = {
+            "time": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            entry["exception"] = self.formatException(record.exc_info)
+        return _json.dumps(entry, ensure_ascii=False)
+
+
+def _configure_logging() -> None:
+    level = getattr(logging, os.getenv("GREENTRACE_LOG_LEVEL", "INFO").upper(), logging.INFO)
+    if os.getenv("GREENTRACE_LOG_JSON") == "1":
+        handler = logging.StreamHandler()
+        handler.setFormatter(_JsonFormatter())
+        root = logging.getLogger()
+        root.handlers = [handler]
+        root.setLevel(level)
+    else:
+        logging.basicConfig(level=level)
+
+
+_configure_logging()
 _data = Path(os.getenv("GREENTRACE_DATA_DIR", str(Path(__file__).resolve().parents[1] / "data")))
 _node = Node("node-1", ["node-1", "node-2", "node-3", "node-4"], _data)
 
 
 def api_security(x_api_key: str | None = Header(default=None)) -> None:
-    """Optional deployment hook: set GREENTRACE_API_KEY to protect writes."""
+    """可选部署保护：设置 GREENTRACE_API_KEY 后，所有读/写接口都要求 X-API-Key。
+
+    未设置时保持开放（便于本地演示）；设置后由 app 级依赖统一鉴权，
+    查询接口（链、账本、余额、审计事件等）不再裸奔。
+    """
     expected = os.getenv("GREENTRACE_API_KEY")
     if expected and (x_api_key is None or
                      not hmac.compare_digest(x_api_key.encode(), expected.encode())):
         raise HTTPException(status_code=401, detail="missing or invalid API key")
+
+
+app = FastAPI(title="GreenTrace 联盟链仿真平台", version="0.2.0")
 
 
 class MerkleRequest(BaseModel):
@@ -61,58 +95,58 @@ def health():
 
 
 @app.get("/chain")
-def chain(offset: int = 0, limit: int = 100):
+def chain(offset: int = 0, limit: int = 100, _auth: None = Depends(api_security)):
     return [b.model_dump() for b in _node.query("chain", offset, limit)]
 
 @app.get("/nodes")
-def nodes():
+def nodes(_auth: None = Depends(api_security)):
     return {"validators": _node.consensus.validators, "fault_tolerance": _node.consensus.f,
             "quorum": _node.consensus.quorum, "local_address": _node.address}
 
 @app.get("/batches")
-def batches(offset: int = 0, limit: int = 100):
+def batches(offset: int = 0, limit: int = 100, _auth: None = Depends(api_security)):
     if offset < 0 or limit < 1 or limit > 1000:
         raise HTTPException(status_code=400, detail="invalid pagination")
     values = list(_node.contract.products.values())
     return values[offset:offset + limit]
 
 @app.get("/accounts/{address}")
-def account(address: str):
+def account(address: str, _auth: None = Depends(api_security)):
     return {"address": address, "frozen": address in _node.contract.frozen_accounts,
             "balances": _node.contract.balances.get(address, {})}
 
 @app.get("/ledger")
-def ledger(offset: int = 0, limit: int = 100):
+def ledger(offset: int = 0, limit: int = 100, _auth: None = Depends(api_security)):
     return _node.query("ledger", offset, limit)
 
 @app.get("/orders")
-def orders(offset: int = 0, limit: int = 100):
+def orders(offset: int = 0, limit: int = 100, _auth: None = Depends(api_security)):
     if offset < 0 or limit < 1 or limit > 1000:
         raise HTTPException(status_code=400, detail="invalid pagination")
     values = list(_node.contract.orders.values())
     return values[offset:offset + limit]
 
 @app.get("/orders/{order_id}")
-def order(order_id: str):
+def order(order_id: str, _auth: None = Depends(api_security)):
     if order_id not in _node.contract.orders:
         raise HTTPException(status_code=404, detail="order not found")
     return _node.contract.orders[order_id]
 
 @app.get("/supply-chain")
-def supply_chain():
+def supply_chain(_auth: None = Depends(api_security)):
     return _node.contract.supply_chain
 
 @app.get("/audit-chain")
-def audit_chain():
+def audit_chain(_auth: None = Depends(api_security)):
     return {"valid": _node.verify_chain(), "height": len(_node.chain),
             "blocks": [b.model_dump() for b in _node.chain]}
 
 @app.get("/integrity")
-def integrity():
+def integrity(_auth: None = Depends(api_security)):
     return _node.integrity_report()
 
 @app.get("/audit-events")
-def audit_events(offset: int = 0, limit: int = 100):
+def audit_events(offset: int = 0, limit: int = 100, _auth: None = Depends(api_security)):
     if offset < 0 or limit < 1 or limit > 1000:
         raise HTTPException(status_code=400, detail="invalid pagination")
     values = [event.model_dump() for event in _node.audit_events]
@@ -122,7 +156,7 @@ def audit_events(offset: int = 0, limit: int = 100):
 @app.get("/traces/{request_id}", response_model=list[TraceEvent])
 @app.get("/transactions/{request_id}/trace", response_model=list[TraceEvent])
 @app.get("/trace/{request_id}", response_model=list[TraceEvent])
-def transaction_trace(request_id: str):
+def transaction_trace(request_id: str, _auth: None = Depends(api_security)):
     events = _node.trace_for_request(request_id)
     if not events:
         raise HTTPException(status_code=404, detail="trace not found")
@@ -131,7 +165,7 @@ def transaction_trace(request_id: str):
 
 @app.get("/orders/{order_id}/timeline", response_model=list[TraceEvent])
 @app.get("/orders/{order_id}/trace", response_model=list[TraceEvent])
-def order_timeline(order_id: str):
+def order_timeline(order_id: str, _auth: None = Depends(api_security)):
     events = _node.order_timeline(order_id)
     if not events:
         raise HTTPException(status_code=404, detail="order timeline not found")
@@ -140,7 +174,7 @@ def order_timeline(order_id: str):
 
 @app.get("/batches/{batch_id}/timeline", response_model=list[TraceEvent])
 @app.get("/batches/{batch_id}/trace", response_model=list[TraceEvent])
-def batch_timeline(batch_id: str):
+def batch_timeline(batch_id: str, _auth: None = Depends(api_security)):
     events = _node.batch_timeline(batch_id)
     if not events:
         raise HTTPException(status_code=404, detail="batch timeline not found")
@@ -149,19 +183,19 @@ def batch_timeline(batch_id: str):
 
 @app.get("/accounts/{address}/funds")
 @app.get("/accounts/{address}/funds-flow")
-def funds_flow(address: str):
+def funds_flow(address: str, _auth: None = Depends(api_security)):
     return {"address": address, "balance": _node.contract.balances.get(address, {}),
             "entries": _node.funds_flow(address)}
 
 @app.get("/transactions/{request_id}", response_model=TransactionResult)
-def transaction_status(request_id: str):
+def transaction_status(request_id: str, _auth: None = Depends(api_security)):
     result = _node.transaction_result(request_id)
     if result is None:
         raise HTTPException(status_code=404, detail="transaction not found")
     return result
 
 @app.get("/merkle-proof/{height}/{tx_index}")
-def merkle_proof_endpoint(height: int, tx_index: int):
+def merkle_proof_endpoint(height: int, tx_index: int, _auth: None = Depends(api_security)):
     try:
         leaf, proof, root = _node.merkle_proof(height, tx_index)
     except (IndexError, KeyError) as exc:
@@ -169,7 +203,7 @@ def merkle_proof_endpoint(height: int, tx_index: int):
     return {"leaf": leaf, "proof": proof, "root": root}
 
 @app.post("/merkle-proof/verify")
-def verify_merkle(body: MerkleRequest):
+def verify_merkle(body: MerkleRequest, _auth: None = Depends(api_security)):
     return {"valid": verify_proof(body.leaf, body.proof, body.root)}
 
 

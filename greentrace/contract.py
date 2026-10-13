@@ -141,13 +141,17 @@ class GreenContract:
 
     @staticmethod
     def _amount(value: Any, name: str = "amount") -> int:
-        try:
-            invalid = isinstance(value, bool) or int(value) != float(value) or int(value) < 0
-        except (TypeError, ValueError, OverflowError):
-            invalid = True
-        if invalid:
+        # 用 Decimal 判断整数，避免 int(value) != float(value) 在大整数上
+        # 因浮点精度丢失（>2^53）被误判。
+        if isinstance(value, bool):
             raise ContractError(f"{name} must be a non-negative integer")
-        return int(value)
+        try:
+            amount = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ContractError(f"{name} must be a non-negative integer") from None
+        if not amount.is_finite() or amount < 0 or amount != amount.to_integral_value():
+            raise ContractError(f"{name} must be a non-negative integer")
+        return int(amount)
 
     @staticmethod
     def _carbon_amount(value: Any, name: str = "carbon_kg") -> Decimal:
@@ -327,7 +331,7 @@ class GreenContract:
             batch["holdings"][to] = batch["holdings"].get(to, Decimal("0")) + transfer_amount
             if batch["holdings"][sender] == 0:
                 batch["holdings"].pop(sender)
-            batch["owner"] = next(iter(batch["holdings"])) if len(batch["holdings"]) == 1 else sender
+            # owner 是「碳数据归属方」，不随额度转移而改变；额度归属由 holdings 记录。
             batch["transfers"] = batch.get("transfers", []) + [{"from": sender, "to": to, "amount": transfer_amount}]
         elif action == "retire_credits":
             if batch_id not in self.products:
@@ -404,7 +408,9 @@ class GreenContract:
             raise ContractError("order not found")
         order = self.orders[order_id]
         if action == "acknowledge_order":
-            deadline = payload.get("now", time.time() if now is None else now)
+            # 超时以服务端时间为准（实时用 now，重放用 block.timestamp），
+            # 绝不信任客户端可伪造的 payload["now"]。
+            deadline = now if now is not None else time.time()
             timeout = order.get("confirmation_deadline")
             if timeout is not None and float(deadline) > float(timeout):
                 raise ContractError("supplier confirmation timed out")

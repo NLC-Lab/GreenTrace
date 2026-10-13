@@ -9,8 +9,21 @@ def main() -> None:
                   ("producer", "auditor", "buyer", "issuer", "supplier", "manufacturer", "regulator")}
     names = ["node-1", "node-2", "node-3", "node-4"]
     node = Node("node-1", names)
+    admin = node.identity  # 创世管理员（bootstrap 时授予，见 Node.__init__）
+
+    # 通过「签名治理交易」建立组织与成员角色，演示真实治理路径，而非直接 grant()。
+    admin_nonce = 1
     for role, identity in identities.items():
-        node.contract.grant(identity.address, role)
+        org_id = f"org-{role}"
+        node.append_block([Transaction.signed(
+            admin, f"gov-org-{role}", admin_nonce, "governance_register_organization",
+            {"organization_id": org_id, "name": f"{role} Org"})])
+        admin_nonce += 1
+        node.append_block([Transaction.signed(
+            admin, f"gov-member-{role}", admin_nonce, "governance_add_member",
+            {"organization_id": org_id, "address": identity.address, "role": role})])
+        admin_nonce += 1
+
     txs = [
         Transaction.signed(
             identities["producer"], "create-001", 1, "create_product",

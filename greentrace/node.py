@@ -13,6 +13,7 @@ from .models import AuditEvent, Block, Transaction, TransactionResult, Organizat
 from .contract import GreenContract
 from .consensus import PBFT
 from .storage import ChainStorage
+from .merkle import merkle_root, merkle_proof
 
 
 class Node:
@@ -389,15 +390,65 @@ class Node:
 
     def integrity_report(self) -> dict[str, object]:
         valid = self.verify_full()
-        return {"valid": valid, "height": len(self.chain),
+        consistent = self.verify_state()
+        return {"valid": valid, "state_consistent": consistent,
+                "height": len(self.chain),
                 "tip": self.chain[-1].hash if self.chain else "0" * 64}
+
+    @staticmethod
+    def _state_digest(contract, seen_requests, nonces):
+        """规范化核心业务状态，用于把「链重放结果」与 live 状态做一致性比较。
+
+        只包含能从链确定性重建的字段；rejected trace / 审计事件是链外追加记录，
+        不参与一致性比较（它们本来就不从链重建）。
+        """
+        return {
+            "roles": dict(contract.roles),
+            "organizations": {k: v.model_dump() for k, v in contract.organizations.items()},
+            "products": Node._json_safe(contract.products),
+            "balances": Node._json_safe(contract.balances),
+            "frozen_accounts": sorted(contract.frozen_accounts),
+            "ledger": Node._json_safe(contract.ledger),
+            "orders": Node._json_safe(contract.orders),
+            "supply_chain": Node._json_safe(contract.supply_chain),
+            "rewards": sorted(contract._rewards),
+            "seen_requests": sorted(seen_requests),
+            "nonces": {k: int(v) for k, v in nonces.items()},
+        }
+
+    def _live_digest(self):
+        return self._state_digest(self.contract, self.seen_requests, self.nonces)
+
+    def _replay_digest(self):
+        contract = GreenContract()
+        contract.roles = {self.address: "admin"}
+        nonces: dict[str, int] = {}
+        seen: set[str] = set()
+        for block in self.chain:
+            for tx in block.transactions:
+                if tx.request_id in seen or tx.nonce != nonces.get(tx.sender, 0) + 1:
+                    raise ValueError("invalid transaction sequence")
+                contract.apply(tx.sender, tx.action, tx.payload, now=block.timestamp)
+                seen.add(tx.request_id)
+                nonces[tx.sender] = tx.nonce
+        return self._state_digest(contract, seen, nonces)
+
+    def verify_state(self) -> bool:
+        """检测 live 状态是否与从链确定性重放得到的状态一致。
+
+        若 state.json 被手工篡改（改余额、账本、订单、角色、组织等），返回 False。
+        """
+        try:
+            return self._live_digest() == self._replay_digest()
+        except (ValueError, TypeError, KeyError):
+            return False
 
     def verify_chain(self) -> bool:
         previous = "0" * 64
         for height, block in enumerate(self.chain):
             if block.height != height or block.previous_hash != previous or block.chain_id != self.chain_id:
                 return False
-            if block.merkle_root != __import__("greentrace.merkle", fromlist=["merkle_root"]).merkle_root(
+            if block.merkle_root != merkle_root(
                 [tx.tx_hash() for tx in block.transactions]
             ) or block.calculate_hash() != block.hash:
                 return False
@@ -442,7 +493,6 @@ class Node:
         return values[offset:offset + limit]
 
     def merkle_proof(self, height: int, tx_index: int) -> tuple[str, list[dict[str, str]], str]:
-        from .merkle import merkle_proof
         block = self.chain[height]
         leaves = [tx.tx_hash() for tx in block.transactions]
         return leaves[tx_index], merkle_proof(leaves, tx_index), block.merkle_root
