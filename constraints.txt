@@ -1,0 +1,9 @@
+cryptography==50.0.2
+fastapi==0.143.0
+uvicorn==0.54.0
+pydantic==2.14.0
+pytest==9.1.1
+httpx==0.28.1
+ruff==0.14.0
+mypy==1.18.2
+coverage==7.10.7

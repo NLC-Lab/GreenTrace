@@ -1,0 +1,29 @@
+name: GreenTrace CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -c constraints.txt -e ".[test,quality]"
+      - run: coverage run -m pytest -q
+      - run: coverage report --fail-under=70
+      - run: ruff check greentrace tests
+      - run: mypy greentrace
+      - run: python -m compileall -q greentrace

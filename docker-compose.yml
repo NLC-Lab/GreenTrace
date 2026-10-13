@@ -1,0 +1,15 @@
+services:
+  greentrace:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      GREENTRACE_DATA_DIR: /app/data
+    volumes:
+      - greentrace-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  greentrace-data:
