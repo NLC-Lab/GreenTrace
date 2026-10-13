@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+data/
+*.egg-info/
+
+# SQLite 运行期文件（WAL 模式会产生 -wal / -shm）
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# 本地质量工具缓存
+.coverage
+coverage.xml
+.ruff_cache/
+.mypy_cache/
